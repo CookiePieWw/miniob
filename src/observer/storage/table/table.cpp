@@ -126,6 +126,45 @@ RC Table::create(int32_t table_id,
   return rc;
 }
 
+RC Table::drop()
+{
+  const char *base_dir = base_dir_.c_str();
+  LOG_INFO("Begin to drop table %s:%s", base_dir, name());
+
+  const int index_num = table_meta_.index_num();
+  for (int i = 0; i < index_num; i++) {
+    const IndexMeta *index_meta = table_meta_.index(i);
+    const FieldMeta *field_meta = table_meta_.field(index_meta->field());
+    if (field_meta == nullptr) {
+      LOG_ERROR("Found invalid index meta info which has a non-exists field. table=%s, index=%s, field=%s",
+                name(), index_meta->name(), index_meta->field());
+      // skip cleanup
+      //  do all cleanup action in destructive Table function
+      return RC::INTERNAL;
+    }
+
+    std::string index_file = table_index_file(base_dir, name(), index_meta->name());
+    if (remove(index_file.c_str())) {
+      LOG_ERROR("Failed to remove index file. file name=%s, errmsg=%s", index_file.c_str(), strerror(errno));
+      return RC::IOERR_REMOVE;
+    }
+  }
+
+  std::string data_file = table_data_file(base_dir, name());
+  if (remove(data_file.c_str())) {
+    LOG_ERROR("Failed to remove data file. file name=%s, errmsg=%s", data_file.c_str(), strerror(errno));
+    return RC::IOERR_REMOVE;
+  }
+
+  std::string meta_file = table_meta_file(base_dir, name());
+  if (remove(meta_file.c_str())) {
+    LOG_ERROR("Failed to remove meta file. file name=%s, errmsg=%s", meta_file.c_str(), strerror(errno));
+    return RC::IOERR_REMOVE;
+  }
+
+  return RC::SUCCESS;
+}
+
 RC Table::open(const char *meta_file, const char *base_dir)
 {
   // 加载元数据文件
